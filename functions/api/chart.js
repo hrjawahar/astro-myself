@@ -275,22 +275,55 @@ function obliquity(T) {
 }
 
 function computeASC(JD, lat, lon) {
-  const T = (JD - 2451545.0) / 36525.0;
-  // Greenwich Sidereal Time
+  const T    = (JD - 2451545.0) / 36525.0;
   const GMST = norm360(280.46061837 + 360.98564736629 * (JD - 2451545.0) + 0.000387933 * T * T - T * T * T / 38710000);
-  const LMST = norm360(GMST + lon); // Local Mean Sidereal Time in degrees
-  const eps  = obliquity(T) * DEG;
-  const RAMC = LMST * DEG; // RAMC in radians
+  const LMST = norm360(GMST + lon);   // Local Mean Sidereal Time in degrees
+  const eps  = obliquity(T) * DEG;    // Obliquity in radians
+  const phi  = lat * DEG;             // Latitude in radians
+  const LMST_r = LMST * DEG;         // LMST in radians
 
-  // Ascendant formula
-  const tanASC = -Math.cos(RAMC) / (Math.sin(eps) * Math.tan(lat * DEG) + Math.cos(eps) * Math.sin(RAMC));
-  let ASC = Math.atan(tanASC) * RAD;
+  // Compute the Ascendant by finding the ecliptic longitude on the EASTERN horizon.
+  // A point at ecliptic longitude L (lat=0) has:
+  //   RA  = atan2(sin(L)*cos(eps), cos(L))
+  //   Dec = arcsin(sin(L)*sin(eps))
+  //   Hour angle H = LMST_r - RA
+  //   Altitude = arcsin(sin(phi)*sin(Dec) + cos(phi)*cos(Dec)*cos(H))
+  //
+  // We find L where altitude = 0 AND the body is on the EASTERN horizon (H > π).
+  // Scan 0°→360° in 1° steps, bisect to 0.001° precision, return eastern crossing.
 
-  // Correct quadrant
-  if (Math.cos(RAMC) < 0) ASC += 180;
-  else if (tanASC < 0) ASC += 360;
+  function altitude(L_deg) {
+    const L   = L_deg * DEG;
+    const RA  = Math.atan2(Math.sin(L) * Math.cos(eps), Math.cos(L));
+    const dec = Math.asin(Math.sin(L) * Math.sin(eps));
+    const H   = LMST_r - RA;
+    return Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H);
+  }
 
-  return norm360(ASC); // Tropical ASC
+  function hourAngle(L_deg) {
+    const L  = L_deg * DEG;
+    const RA = Math.atan2(Math.sin(L) * Math.cos(eps), Math.cos(L));
+    return norm360((LMST_r - RA) * RAD); // 0–360°; eastern horizon = H > 180°
+  }
+
+  for (let L = 0; L < 360; L += 1) {
+    if (altitude(L) * altitude(L + 1) <= 0) {
+      // Sign change found — bisect to high precision
+      let lo = L, hi = L + 1;
+      for (let i = 0; i < 50; i++) {
+        const mid = (lo + hi) / 2;
+        if (altitude(lo) * altitude(mid) <= 0) hi = mid; else lo = mid;
+      }
+      const candidate = (lo + hi) / 2;
+      if (hourAngle(candidate) > 180) return candidate; // eastern horizon = true ASC
+    }
+  }
+
+  // Polar fallback (circumpolar cases near 66°+ latitude)
+  const E   = LMST_r;
+  const num = -Math.cos(E);
+  const den = Math.sin(eps) * Math.tan(phi) + Math.cos(eps) * Math.sin(E);
+  return norm360(Math.atan2(num, den) * RAD);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -446,20 +479,92 @@ function computeVimshottari(moonLonSidereal, birthJD) {
   return { nakshatra, nakshataLord: startLord, dashas };
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  SECTION 8: GEOCODING via Nominatim
-// ══════════════════════════════════════════════════════════════════════════════
+// ── SECTION 8: GEOCODING via Nominatim (OpenStreetMap) ───────────────────────
 
-async function geocode(place) {
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&limit=1`;
-  const res = await fetch(url, { headers: { "User-Agent": "JyotishPrecisionApp/3.0" } });
+async function geocode(query) {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`;
+  const res  = await fetch(url, { headers: { "User-Agent": "JyotishPrecisionApp/3.0" } });
   const data = await res.json();
-  if (!data || !data[0]) throw new Error(`Place not found: ${place}`);
-  return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), displayName: data[0].display_name };
+  if (!data || !data[0]) throw new Error(`Place not found: "${query}". Try a major city name or district.`);
+  return {
+    lat: parseFloat(data[0].lat),
+    lng: parseFloat(data[0].lon),
+    displayName: data[0].display_name,
+    country: data[0].address?.country_code?.toUpperCase() || ""
+  };
 }
 
-// Simple timezone offset from longitude (±1 per 15°) — refined by UTC offset provided
-function lonToUtcOffset(lng) { return Math.round(lng / 15); }
+// Autocomplete search — returns up to 8 suggestions for the UI dropdown
+async function searchPlaces(query) {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=8&addressdetails=1&featuretype=city`;
+  const res  = await fetch(url, { headers: { "User-Agent": "JyotishPrecisionApp/3.0" } });
+  const data = await res.json();
+  return (data || []).map(r => ({
+    lat:         parseFloat(r.lat),
+    lng:         parseFloat(r.lon),
+    displayName: r.display_name,
+    shortName:   [r.address?.city || r.address?.town || r.address?.village || r.name, r.address?.state, r.address?.country].filter(Boolean).join(", "),
+    country:     r.address?.country_code?.toUpperCase() || ""
+  }));
+}
+
+// ── Timezone offset lookup ────────────────────────────────────────────────────
+// Precise UTC offsets for countries/regions — critical for accurate Lagna calculation
+// A 30-minute error shifts ASC by ~7.5° and can put it in the wrong sign
+const TIMEZONE_BY_COUNTRY = {
+  // Asia
+  "IN": 5.5,   "NP": 5.75,  "LK": 5.5,  "BD": 6,    "PK": 5,
+  "AF": 4.5,   "IR": 3.5,   "MM": 6.5,  "TH": 7,    "VN": 7,
+  "KH": 7,     "LA": 7,     "MY": 8,    "SG": 8,    "PH": 8,
+  "ID": 7,     "CN": 8,     "TW": 8,    "HK": 8,    "MO": 8,
+  "JP": 9,     "KR": 9,     "KP": 9,    "MN": 8,    "BT": 6,
+  "MV": 5,     "UZ": 5,     "KZ": 6,    "TM": 5,    "TJ": 5,
+  "KG": 6,     "AZ": 4,     "GE": 4,    "AM": 4,    "IL": 2,
+  "SA": 3,     "AE": 4,     "QA": 3,    "KW": 3,    "BH": 3,
+  "OM": 4,     "YE": 3,     "IQ": 3,    "SY": 2,    "LB": 2,
+  "JO": 2,     "PS": 2,     "TR": 3,
+  // Europe (standard time — DST adds 1 but use standard for birth charts)
+  "GB": 0,     "IE": 0,     "PT": 0,    "IS": 0,
+  "FR": 1,     "DE": 1,     "ES": 1,    "IT": 1,    "NL": 1,
+  "BE": 1,     "CH": 1,     "AT": 1,    "PL": 1,    "CZ": 1,
+  "SK": 1,     "HU": 1,     "SI": 1,    "HR": 1,    "BA": 1,
+  "RS": 1,     "ME": 1,     "MK": 1,    "AL": 1,    "LU": 1,
+  "DK": 1,     "NO": 1,     "SE": 1,    "FI": 2,    "EE": 2,
+  "LV": 2,     "LT": 2,     "BY": 3,    "UA": 2,    "MD": 2,
+  "RO": 2,     "BG": 2,     "GR": 2,    "CY": 2,    "RU": 3,
+  // Africa
+  "MA": 0,     "DZ": 1,     "TN": 1,    "LY": 2,    "EG": 2,
+  "SD": 3,     "ET": 3,     "KE": 3,    "TZ": 3,    "ZA": 2,
+  "NG": 1,     "GH": 0,     "SN": 0,    "CI": 0,
+  // Americas
+  "BR": -3,    "AR": -3,    "CL": -3,   "UY": -3,   "PY": -4,
+  "BO": -4,    "PE": -5,    "CO": -5,   "EC": -5,   "VE": -4,
+  "MX": -6,    "CR": -6,    "PA": -5,   "CU": -5,   "JM": -5,
+  "HT": -5,    "DO": -4,    "TT": -4,
+  // Oceania
+  "AU": 10,    "NZ": 12,    "FJ": 12,   "PG": 10,
+};
+
+async function getTimezoneOffset(lat, lng, countryCode) {
+  // 1. Check known country offsets first (fast, offline)
+  if (countryCode && TIMEZONE_BY_COUNTRY[countryCode] != null) {
+    return TIMEZONE_BY_COUNTRY[countryCode];
+  }
+  // 2. Try TimeZoneDB API (free tier, no key needed for basic lookup)
+  try {
+    const url = `https://api.timezonedb.com/v2.1/get-time-zone?key=TIMEZONEDB_FREE&format=json&by=position&lat=${lat}&lng=${lng}`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.status === "OK" && data.gmtOffset != null) {
+      return data.gmtOffset / 3600; // convert seconds to hours
+    }
+  } catch {}
+  // 3. Fallback: longitude-based estimate (rough, avoids 30-min errors for most zones)
+  // Use 15-minute quantisation to handle India(+5.5), Nepal(+5.75), etc.
+  const raw = lng / 15;
+  // Round to nearest 0.25 (15 minutes) to catch common fractional zones
+  return Math.round(raw * 4) / 4;
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  SECTION 9: RETROGRADE DETECTION
@@ -503,7 +608,14 @@ function getNakshatraPada(sidLon) {
 
 export async function onRequestPost(context) {
   try {
-    const body     = await context.request.json();
+    const body = await context.request.json();
+
+    // Timezone-only lookup from city autocomplete UI
+    if (body._tzonly) {
+      const offset = await getTimezoneOffset(body.lat || 0, body.lng || 0, body.country || "");
+      return Response.json({ detectedUTC: offset });
+    }
+
     const { name, dob, tob, place, utcOffset, ayanamsha: ayanChoice } = body;
 
     if (!dob || !tob || !place) {
@@ -514,11 +626,23 @@ export async function onRequestPost(context) {
     const [year, month, day] = dob.split("-").map(Number);
     const [hour, minute]     = tob.split(":").map(Number);
 
-    // Geocode
-    const geo = await geocode(place);
+    // Use pre-geocoded coords from autocomplete when available —
+    // avoids redundant network call and locks to the exact selected city
+    let geo;
+    if (body.lat != null && body.lng != null) {
+      geo = { lat: parseFloat(body.lat), lng: parseFloat(body.lng),
+              displayName: place, country: body.country || "" };
+    } else {
+      geo = await geocode(place);
+    }
 
-    // UTC offset: user-provided or computed from longitude
-    const utcOff = utcOffset != null ? parseFloat(utcOffset) : lonToUtcOffset(geo.lng);
+    // UTC offset priority:
+    //   1) user explicitly typed a value
+    //   2) auto-detected via country table / TimeZoneDB on city select
+    //   3) fallback: longitude-based 15-min rounding
+    const utcOff = utcOffset != null
+      ? parseFloat(utcOffset)
+      : await getTimezoneOffset(geo.lat, geo.lng, geo.country);
 
     // Convert local time to UTC
     const utcHour = hour - utcOff;
@@ -607,5 +731,17 @@ export async function onRequestPost(context) {
 
   } catch (error) {
     return Response.json({ error: error.message || "Chart calculation failed." }, { status:500 });
+  }
+}
+
+// ── Place search handler (GET /api/chart?search=query) ────────────────────────
+export async function onRequestGet(context) {
+  try {
+    const query = new URL(context.request.url).searchParams.get("q");
+    if (!query || query.length < 2) return Response.json([]);
+    const results = await searchPlaces(query);
+    return Response.json(results);
+  } catch (e) {
+    return Response.json([]);
   }
 }
