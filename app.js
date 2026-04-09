@@ -5,12 +5,37 @@
 const STORAGE_KEY = "jyotish-v3-inputs";
 const HISTORY_KEY = "jyotish-v3-history";
 
+// Client-side timezone lookup — mirrors backend TIMEZONE_BY_COUNTRY
+// Lets timezone display instantly on city selection without a server roundtrip
+const CLIENT_TZ = {
+  IN:5.5,  NP:5.75, LK:5.5,  BD:6,    PK:5,    AF:4.5,  IR:3.5,  MM:6.5,
+  TH:7,    VN:7,    KH:7,    LA:7,    MY:8,    SG:8,    PH:8,    ID:7,
+  CN:8,    TW:8,    HK:8,    MO:8,    JP:9,    KR:9,    KP:9,    MN:8,
+  BT:6,    MV:5,    UZ:5,    KZ:6,    TM:5,    TJ:5,    KG:6,    AZ:4,
+  GE:4,    AM:4,    IL:2,    SA:3,    AE:4,    QA:3,    KW:3,    BH:3,
+  OM:4,    YE:3,    IQ:3,    SY:2,    LB:2,    JO:2,    PS:2,    TR:3,
+  GB:0,    IE:0,    PT:0,    IS:0,    FR:1,    DE:1,    ES:1,    IT:1,
+  NL:1,    BE:1,    CH:1,    AT:1,    PL:1,    CZ:1,    SK:1,    HU:1,
+  SI:1,    HR:1,    BA:1,    RS:1,    ME:1,    MK:1,    AL:1,    LU:1,
+  DK:1,    NO:1,    SE:1,    FI:2,    EE:2,    LV:2,    LT:2,    BY:3,
+  UA:2,    MD:2,    RO:2,    BG:2,    GR:2,    CY:2,    RU:3,
+  MA:0,    DZ:1,    TN:1,    LY:2,    EG:2,    SD:3,    ET:3,    KE:3,
+  TZ:3,    ZA:2,    NG:1,    GH:0,    SN:0,    CI:0,
+  BR:-3,   AR:-3,   CL:-3,   UY:-3,   PY:-4,   BO:-4,   PE:-5,   CO:-5,
+  EC:-5,   VE:-4,   MX:-6,   CR:-6,   PA:-5,   CU:-5,   JM:-5,   HT:-5,
+  DO:-4,   TT:-4,   AU:10,   NZ:12,   FJ:12,   PG:10,
+};
+
 const PLANET_GLYPHS = {
   Sun:"☉", Moon:"☽", Mars:"♂", Mercury:"☿", Jupiter:"♃",
   Venus:"♀", Saturn:"♄", Rahu:"☊", Ketu:"☋"
 };
 
 const PLANET_LIST = ["Sun","Moon","Mars","Mercury","Jupiter","Venus","Saturn","Rahu","Ketu"];
+
+// ── City search state ──────────────────────────────────────────────────────────
+let _selectedPlace = null; // { lat, lng, displayName, shortName, utcOffset }
+let _searchTimer   = null;
 
 // South Indian chart layout — position of each house number
 // SI format: fixed sign assignments per cell position (0-indexed row,col)
@@ -52,12 +77,16 @@ tabs.forEach(tab => {
 
 // ── FORM HELPERS ──────────────────────────────────────────────────────────────
 function getForm() {
+  const placeDisplay = document.getElementById("inputPlaceDisplay");
   return {
-    name:     document.getElementById("inputName").value.trim(),
-    dob:      document.getElementById("inputDOB").value,
-    tob:      document.getElementById("inputTOB").value,
-    place:    document.getElementById("inputPlace").value.trim(),
-    utcOffset:document.getElementById("inputUTC").value.trim() || null,
+    name:      document.getElementById("inputName").value.trim(),
+    dob:       document.getElementById("inputDOB").value,
+    tob:       document.getElementById("inputTOB").value,
+    place:     _selectedPlace?.displayName || (placeDisplay ? placeDisplay.value.trim() : ""),
+    lat:       _selectedPlace?.lat     || null,
+    lng:       _selectedPlace?.lng     || null,
+    country:   _selectedPlace?.country || "",
+    utcOffset: _selectedPlace?.utcOffset ?? null,
   };
 }
 
@@ -81,7 +110,7 @@ async function generate() {
   clearError();
 
   if (!form.dob || !form.tob || !form.place) {
-    showError("Please enter date of birth, time of birth, and place of birth to continue.");
+    showError("Please enter date of birth, time of birth, and select a place of birth from the dropdown.");
     return;
   }
 
@@ -739,11 +768,24 @@ function restoreInputs() {
   try {
     const s = JSON.parse(raw);
     const set = (id, v) => { const el=document.getElementById(id); if(el&&v) el.value=v; };
-    set("inputName",  s.name);
-    set("inputDOB",   s.dob);
-    set("inputTOB",   s.tob);
-    set("inputPlace", s.place);
-    set("inputUTC",   s.utcOffset);
+    set("inputName", s.name);
+    set("inputDOB",  s.dob);
+    set("inputTOB",  s.tob);
+    const plDisp   = document.getElementById("inputPlaceDisplay");
+    const plSearch = document.getElementById("inputPlaceSearch");
+    const clearBtn = document.getElementById("placeClearBtn");
+    if (s.place) {
+      if (plDisp) plDisp.value = s.place;
+      const shortName = s.place.split(",").slice(0,3).join(",").trim();
+      if (plSearch) plSearch.value = shortName;
+      if (s.lat && s.lng) {
+        if (clearBtn) clearBtn.style.display = "inline-flex";
+        _selectedPlace = { displayName: s.place, lat: s.lat, lng: s.lng,
+          country: s.country || "", shortName,
+          utcOffset: s.utcOffset != null ? parseFloat(s.utcOffset) : (CLIENT_TZ[s.country] ?? null) };
+        showPlaceConfirmed(shortName, _selectedPlace.utcOffset);
+      }
+    }
   } catch {}
 }
 
@@ -762,6 +804,8 @@ function saveToHistory() {
     dob:      f.dob,
     tob:      f.tob,
     place:    f.place,
+    country:  f.country || "",
+    country:  _selectedPlace?.country || "",
     utcOffset:f.utcOffset,
     d1Lagna:  c.d1?.lagnaSign || "",
     d9Lagna:  c.d9?.lagnaSign || ""
@@ -799,11 +843,23 @@ function loadHistory(id) {
   const h = getHistory().find(x=>x.id===id);
   if (!h) return;
   const set=(el,v)=>{ if(el&&v!=null) el.value=v; };
-  set(document.getElementById("inputName"),  h.name);
-  set(document.getElementById("inputDOB"),   h.dob);
-  set(document.getElementById("inputTOB"),   h.tob);
-  set(document.getElementById("inputPlace"), h.place);
-  set(document.getElementById("inputUTC"),   h.utcOffset||"");
+  set(document.getElementById("inputName"), h.name);
+  set(document.getElementById("inputDOB"),  h.dob);
+  set(document.getElementById("inputTOB"),  h.tob);
+  const plDisp   = document.getElementById("inputPlaceDisplay");
+  const plSearch = document.getElementById("inputPlaceSearch");
+  const clearBtn = document.getElementById("placeClearBtn");
+  if (h.place) {
+    if (plDisp)   plDisp.value   = h.place;
+    // Show short name in visible search box (strip long Nominatim suffix if present)
+    const shortName = h.place.split(",").slice(0,3).join(",").trim();
+    if (plSearch) plSearch.value = shortName;
+    if (clearBtn) clearBtn.style.display = "inline-flex";
+    _selectedPlace = { displayName: h.place, lat: h.lat||null, lng: h.lng||null,
+      country: h.country || "", shortName,
+      utcOffset: h.utcOffset != null ? parseFloat(h.utcOffset) : (CLIENT_TZ[h.country] ?? null) };
+    showPlaceConfirmed(shortName, _selectedPlace.utcOffset);
+  }
   saveInputs();
 }
 
@@ -874,6 +930,129 @@ document.querySelectorAll("input,select").forEach(el => {
   el.addEventListener("input",  saveInputs);
 });
 
+// ── City search autocomplete ──────────────────────────────────────────────────
+
+function initCitySearch() {
+  const input    = document.getElementById("inputPlaceSearch");
+  const dropdown = document.getElementById("placeDropdown");
+  const display  = document.getElementById("inputPlaceDisplay");
+  const clearBtn = document.getElementById("placeClearBtn");
+  const utcEl    = document.getElementById("detectedUTC");
+  if (!input || !dropdown) return;
+
+  input.addEventListener("input", () => {
+    const q = input.value.trim();
+    clearTimeout(_searchTimer);
+    if (q.length < 2) { dropdown.innerHTML = ""; dropdown.style.display = "none"; return; }
+    _searchTimer = setTimeout(() => fetchCitySuggestions(q), 320);
+  });
+
+  input.addEventListener("keydown", e => {
+    const items = dropdown.querySelectorAll(".place-item");
+    const active = dropdown.querySelector(".place-item.active");
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = active ? active.nextElementSibling : items[0];
+      if (next) { active?.classList.remove("active"); next.classList.add("active"); }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prev = active ? active.previousElementSibling : items[items.length-1];
+      if (prev) { active?.classList.remove("active"); prev.classList.add("active"); }
+    } else if (e.key === "Enter" && active) {
+      e.preventDefault();
+      active.click();
+    } else if (e.key === "Escape") {
+      dropdown.style.display = "none";
+    }
+  });
+
+  // Close dropdown on outside click
+  document.addEventListener("click", e => {
+    if (!e.target.closest(".place-search-wrap")) {
+      dropdown.style.display = "none";
+    }
+  });
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      _selectedPlace = null;
+      if (input)   input.value = "";
+      if (display) display.value = "";
+      if (utcEl)   utcEl.textContent = "";
+      clearBtn.style.display = "none";
+      dropdown.innerHTML = ""; dropdown.style.display = "none";
+      input.focus();
+    });
+  }
+}
+
+async function fetchCitySuggestions(query) {
+  const dropdown = document.getElementById("placeDropdown");
+  if (!dropdown) return;
+  dropdown.innerHTML = `<div class="place-item place-loading">Searching...</div>`;
+  dropdown.style.display = "block";
+  try {
+    const res  = await fetch(`/api/chart?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if (!data || !data.length) {
+      dropdown.innerHTML = `<div class="place-item place-no-result">No cities found. Try a different spelling.</div>`;
+      return;
+    }
+    dropdown.innerHTML = data.map((r, i) => `
+      <div class="place-item" data-idx="${i}" data-lat="${r.lat}" data-lng="${r.lng}"
+           data-name="${(r.displayName||"").replace(/"/g,"&quot;")}"
+           data-short="${(r.shortName||"").replace(/"/g,"&quot;")}"
+           data-country="${(r.country||"").toUpperCase()}">
+        <span class="pi-name">${r.shortName || r.displayName}</span>
+        <span class="pi-country">${r.country || ""}</span>
+      </div>
+    `).join("");
+    dropdown.style.display = "block";
+    dropdown.querySelectorAll(".place-item[data-lat]").forEach(item => {
+      item.addEventListener("click", () => selectPlace(item));
+    });
+  } catch (e) {
+    dropdown.innerHTML = `<div class="place-item place-no-result">Search failed. Check connection.</div>`;
+  }
+}
+
+async function selectPlace(item) {
+  const dropdown = document.getElementById("placeDropdown");
+  const input    = document.getElementById("inputPlaceSearch");
+  const display  = document.getElementById("inputPlaceDisplay");
+  const clearBtn = document.getElementById("placeClearBtn");
+  const utcEl    = document.getElementById("detectedUTC");
+
+  const lat     = parseFloat(item.dataset.lat);
+  const lng     = parseFloat(item.dataset.lng);
+  const name    = item.dataset.name;
+  const short   = item.dataset.short;
+  const country = (item.dataset.country || "").toUpperCase();
+
+  // Resolve timezone client-side using the same country table as the backend
+  const utcOffset = CLIENT_TZ[country] ?? null;
+
+  _selectedPlace = { displayName: name, shortName: short, lat, lng, country, utcOffset };
+
+  if (input)   input.value = short;
+  if (display) display.value = name;
+  if (clearBtn) clearBtn.style.display = "inline-flex";
+
+  showPlaceConfirmed(short, utcOffset);
+  dropdown.innerHTML = ""; dropdown.style.display = "none";
+  saveInputs();
+}
+
+function showPlaceConfirmed(name, utcOffset) {
+  const utcEl = document.getElementById("detectedUTC");
+  if (!utcEl) return;
+  const offsetStr = utcOffset != null
+    ? `UTC${utcOffset >= 0 ? "+" : ""}${utcOffset}`
+    : "UTC offset unknown — enter manually if needed";
+  utcEl.innerHTML = `<span class="utc-ok">✓ ${name}</span> <span class="utc-offset">${offsetStr}</span>`;
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 restoreInputs();
 renderHistory();
+initCitySearch();
