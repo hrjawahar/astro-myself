@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Jyotish — Precision Vedic Analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+  <!-- ── TOPBAR ─────────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-glyph">☉</div>
+      <div>
+        <div class="brand-name">Jyotish</div>
+        <div class="brand-sub">Precision Vedic Analyzer · Swiss Ephemeris · Lahiri Ayanamsha</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="saveBtn" class="btn-ghost">Save</button>
+      <button id="downloadBtn" class="btn-ghost" disabled>Report</button>
+      <button id="resetBtn" class="btn-danger-ghost">Reset</button>
+    </div>
+  </header>
+
+  <!-- ── NAVIGATION ────────────────────────────────────────────────────── -->
+  <nav class="nav-tabs" id="mainNav">
+    <button class="nav-tab active" data-tab="inputTab">
+      <span class="tab-icon">⬡</span> Birth Data
+    </button>
+    <button class="nav-tab" data-tab="chartTab" data-requires="chart">
+      <span class="tab-icon">◈</span> Charts
+    </button>
+    <button class="nav-tab" data-tab="dashaTab" data-requires="chart">
+      <span class="tab-icon">◉</span> Dasha
+    </button>
+    <button class="nav-tab" data-tab="domainTab" data-requires="analysis">
+      <span class="tab-icon">◈</span> Domains
+    </button>
+    <button class="nav-tab" data-tab="summaryTab" data-requires="analysis">
+      <span class="tab-icon">◎</span> Summary
+    </button>
+    <button class="nav-tab" data-tab="planetsTab" data-requires="chart">
+      <span class="tab-icon">⊕</span> Planets
+    </button>
+  </nav>
+
+  <!-- ── MAIN ──────────────────────────────────────────────────────────── -->
+  <main id="mainContent">
+
+    <!-- ── SCREEN 1: BIRTH DATA ──────────────────────────────────────── -->
+    <section id="inputTab" class="screen active">
+      <div class="screen-inner">
+
+        <div class="card intro-card">
+          <div class="intro-icon">☉ ☽ ☿ ♀ ♂ ♃ ♄</div>
+          <h2 class="intro-title">Your Vedic Birth Chart</h2>
+          <p class="intro-body">Enter your birth details below. The app will calculate your complete Vedic horoscope — the precise positions of all planets at the moment of your birth — and interpret what those positions mean across the six key areas of your life.</p>
+          <p class="intro-body">Every interpretation is generated from your specific chart, not generic zodiac text. The calculation uses the Swiss Ephemeris engine — the same precision standard used by NASA and professional Jyotish astrologers worldwide.</p>
+        </div>
+
+        <div class="grid-2col">
+          <div class="card">
+            <h3 class="card-title">Birth Details</h3>
+            <div class="form-group">
+              <label>Full name <span class="form-hint">(appears in report)</span></label>
+              <input id="inputName" type="text" placeholder="e.g. Ravi Kumar"/>
+            </div>
+            <div class="form-group">
+              <label>Date of birth</label>
+              <input id="inputDOB" type="date"/>
+            </div>
+            <div class="form-group">
+              <label>Time of birth <span class="form-hint">(as exact as possible — even ±5 min matters)</span></label>
+              <input id="inputTOB" type="time"/>
+            </div>
+            <div class="form-group">
+              <label>Place of birth <span class="form-hint">(city or town name)</span></label>
+              <input id="inputPlace" type="text" placeholder="e.g. Chennai, Tamil Nadu"/>
+            </div>
+            <div class="form-group">
+              <label>UTC offset <span class="form-hint">(India = +5.5, auto-detected if blank)</span></label>
+              <input id="inputUTC" type="number" step="0.5" placeholder="e.g. 5.5 for IST"/>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title">Settings</h3>
+            <div class="form-group">
+              <label>Ayanamsha</label>
+              <select id="inputAyanamsha">
+                <option value="lahiri" selected>Lahiri (Chitrapaksha) — Government of India standard</option>
+              </select>
+              <span class="form-hint">Ayanamsha corrects for the slow drift of the equinox against the fixed stars. Lahiri is the standard for Parashari Jyotish — do not change unless you know why.</span>
+            </div>
+            <div class="form-group">
+              <label>House system</label>
+              <select id="inputHouseSystem">
+                <option value="whole" selected>Whole Sign — standard for Parashari Jyotish</option>
+              </select>
+              <span class="form-hint">Whole Sign houses mean each zodiac sign occupies exactly one house. This is the system used in classical Indian astrology.</span>
+            </div>
+
+            <div class="precision-note">
+              <div class="pn-title">Why birth time matters</div>
+              <div class="pn-body">A 4-minute error in birth time shifts the Lagna by 1°. That can move it into a different sign entirely, changing your entire chart. Use hospital records or birth certificates wherever possible.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card generate-card">
+          <div class="generate-row">
+            <button id="generateBtn" class="btn-primary">
+              <span id="generateBtnText">Generate Chart & Insights</span>
+            </button>
+            <div id="statusMsg" class="status-msg"></div>
+          </div>
+          <div id="errorBox" class="error-box hidden"></div>
+        </div>
+
+        <!-- History -->
+        <div class="card">
+          <h3 class="card-title">Saved Charts</h3>
+          <div id="historyBox" class="history-empty">No saved charts yet. Generate a chart and press Save.</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SCREEN 2: CHARTS ─────────────────────────────────────────── -->
+    <section id="chartTab" class="screen">
+      <div class="screen-inner">
+
+        <div class="chart-explainer card">
+          <div class="explainer-grid">
+            <div class="explainer-item">
+              <div class="explainer-label">D1 — Rashi Chart (Birth Chart)</div>
+              <div class="explainer-body">This is your primary birth chart. It shows the actual positions of all 9 planets in the sky at the moment you were born, divided across 12 houses. Think of it as a map of the life you were born into — the promises, challenges, and natural tendencies written into your existence from the start. D1 is always read first.</div>
+            </div>
+            <div class="explainer-item">
+              <div class="explainer-label">D9 — Navamsha Chart (Soul & Maturity Chart)</div>
+              <div class="explainer-body">The D9 is a divisional chart derived mathematically from your D1. Each sign in D1 is divided into 9 equal parts — your D9 shows which of those parts each planet falls in. It reveals the deeper, soul-level quality of each planet's expression, and most importantly shows how the D1 promises actually mature and deliver in the second half of life. If D1 promises something and D9 confirms it, the result is strong and lasting. If D9 contradicts D1, the early promise fades.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chart-lagna-bar" id="lagnaBar">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="charts-grid" id="chartsGrid">
+          <div class="chart-container">
+            <div class="chart-header">
+              <span class="chart-label">D1 — Rashi Chart</span>
+              <span class="chart-sub" id="d1LagnaLabel"></span>
+            </div>
+            <div id="d1ChartWrap" class="chart-wrap"></div>
+          </div>
+          <div class="chart-container">
+            <div class="chart-header">
+              <span class="chart-label">D9 — Navamsha Chart</span>
+              <span class="chart-sub" id="d9LagnaLabel"></span>
+            </div>
+            <div id="d9ChartWrap" class="chart-wrap"></div>
+          </div>
+        </div>
+
+        <div class="card" id="chartLegend">
+          <h3 class="card-title">Chart Legend</h3>
+          <div class="legend-grid">
+            <div class="legend-item"><span class="leg-code">Ex</span> Exalted — planet at peak strength</div>
+            <div class="legend-item"><span class="leg-code">De</span> Debilitated — planet at reduced strength</div>
+            <div class="legend-item"><span class="leg-code">Own</span> Own sign — planet in home territory</div>
+            <div class="legend-item"><span class="leg-code">R</span> Retrograde — planet appears to move backward</div>
+            <div class="legend-item"><span class="leg-code">☀</span> Combust — too close to Sun, effectiveness reduced</div>
+            <div class="legend-item"><span class="leg-code">⚔</span> War — defeated in planetary war with nearby planet</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SCREEN 3: DASHA ──────────────────────────────────────────── -->
+    <section id="dashaTab" class="screen">
+      <div class="screen-inner">
+
+        <div class="card">
+          <h3 class="card-title">What is Vimshottari Dasha?</h3>
+          <p class="card-body">Dasha is the timing system of Vedic astrology — it divides your 120-year life span into planetary periods, each ruled by a different planet. During each Dasha, that planet's themes and energy dominate your life experience. Understanding which Dasha you are currently in, and how that planet sits in your specific chart, is the key to precise life predictions.</p>
+          <p class="card-body">Each Maha Dasa (major period) is subdivided into Antar Dasas (sub-periods). The current Antar Dasa shows where the focus is within the broader Maha Dasa theme.</p>
+        </div>
+
+        <div class="card" id="currentDashaCard">
+          <h3 class="card-title">Current Period</h3>
+          <div id="currentDashaDisplay"></div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Complete Dasha Timeline (120 years)</h3>
+          <div id="dashaTimeline" class="dasha-timeline"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SCREEN 4: DOMAIN INSIGHTS ───────────────────────────────── -->
+    <section id="domainTab" class="screen">
+      <div class="screen-inner">
+
+        <div class="card">
+          <h3 class="card-title">How domain insights work</h3>
+          <p class="card-body">Each domain is scored by examining the relevant houses, house lords, and planetary karakas (significators) in both D1 and D9. The scoring uses your lagna's functional benefic/malefic classification, planetary dignity, combustion status, special aspects, and yoga detection. Nothing here is generic — every line refers to a specific placement in your chart.</p>
+        </div>
+
+        <div class="verdict-summary" id="verdictSummary">
+          <!-- Quick verdict grid populated by JS -->
+        </div>
+
+        <div class="comparison-wrap card">
+          <h3 class="card-title">D1 × D9 Comparison</h3>
+          <div class="table-scroll">
+            <table class="comparison-table" id="comparisonTable">
+              <thead><tr><th>Domain</th><th>D1</th><th>D9</th><th>Trend</th><th>Verdict</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="domainCards" class="domain-cards-grid"></div>
+
+      </div>
+    </section>
+
+    <!-- ── SCREEN 5: SUMMARY ─────────────────────────────────────────── -->
+    <section id="summaryTab" class="screen">
+      <div class="screen-inner">
+
+        <div id="summaryOverall" class="card summary-overall">
+          <!-- Overall pattern card -->
+        </div>
+
+        <div class="grid-2col">
+          <div class="card" id="summaryEarly">
+            <h3 class="card-title">Early-life leaning</h3>
+            <div id="summaryEarlyText" class="card-body"></div>
+          </div>
+          <div class="card" id="summaryLater">
+            <h3 class="card-title">Later-life leaning</h3>
+            <div id="summaryLaterText" class="card-body"></div>
+          </div>
+        </div>
+
+        <div class="card" id="summaryYogas">
+          <h3 class="card-title">Key yogas detected</h3>
+          <div id="summaryYogasList" class="yoga-list"></div>
+        </div>
+
+        <div class="card" id="summaryDasha">
+          <h3 class="card-title">Current dasha reading</h3>
+          <div id="summaryDashaText" class="card-body"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SCREEN 6: PLANET DETAILS ─────────────────────────────────── -->
+    <section id="planetsTab" class="screen">
+      <div class="screen-inner">
+
+        <div class="card">
+          <h3 class="card-title">Planetary positions at birth</h3>
+          <p class="card-body">All positions are sidereal (Lahiri ayanamsha). Degrees shown within the sign (0°–30°). The D9 sign shows where the planet falls in the Navamsha chart — confirming or modifying its D1 strength.</p>
+        </div>
+
+        <div id="planetCards" class="planet-cards-grid"></div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    Swiss Ephemeris precision · Lahiri Ayanamsha · Whole Sign Houses · Parashari Jyotish
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
