@@ -79,12 +79,17 @@
               <input id="inputTOB" type="time"/>
             </div>
             <div class="form-group">
-              <label>Place of birth <span class="form-hint">(city or town name)</span></label>
-              <input id="inputPlace" type="text" placeholder="e.g. Chennai, Tamil Nadu"/>
-            </div>
-            <div class="form-group">
-              <label>UTC offset <span class="form-hint">(India = +5.5, auto-detected if blank)</span></label>
-              <input id="inputUTC" type="number" step="0.5" placeholder="e.g. 5.5 for IST"/>
+              <label>Place of birth <span class="form-hint">— type a city name and select from the list</span></label>
+              <div class="place-search-wrap">
+                <div class="place-input-row">
+                  <input id="inputPlaceSearch" type="text" placeholder="Type city or town name..." autocomplete="off"/>
+                  <button type="button" id="placeClearBtn" class="place-clear-btn" style="display:none" aria-label="Clear place">×</button>
+                </div>
+                <div id="placeDropdown" class="place-dropdown" style="display:none"></div>
+                <input id="inputPlaceDisplay" type="hidden"/>
+                <div id="detectedUTC" class="detected-utc"></div>
+              </div>
+              <span class="form-hint">Search is powered by OpenStreetMap. Timezone is auto-detected — no manual entry needed for most cities worldwide.</span>
             </div>
           </div>
 
