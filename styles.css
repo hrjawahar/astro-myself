@@ -319,6 +319,7 @@ select option { background: var(--bg-3); }
 .history-name { font-weight: 500; font-size: 14px; color: var(--text); }
 .history-meta { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
 .history-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.history-main { flex: 1; min-width: 0; }
 .btn-sm-ghost {
   background: transparent;
   border: 1px solid var(--border-2);
@@ -541,6 +542,8 @@ select option { background: var(--bg-3); }
 .vm-developing { color: var(--dev); }
 .vm-early     { color: var(--info); }
 .vm-delayed   { color: #8fcf8a; }
+.vm-ripening  { color: #7ec8a4; }
+.vm-forming   { color: var(--text-muted); }
 .vm-moderate  { color: var(--text-dim); }
 
 .table-scroll { overflow-x: auto; }
@@ -585,6 +588,8 @@ select option { background: var(--bg-3); }
 .domain-card.developing { border-left: 3px solid var(--dev); }
 .domain-card.early     { border-left: 3px solid var(--info); }
 .domain-card.delayed   { border-left: 3px solid #8fcf8a; }
+.domain-card.ripening  { border-left: 3px solid #7ec8a4; }
+.domain-card.forming   { border-left: 3px solid var(--text-muted); }
 .domain-card.moderate  { border-left: 3px solid var(--text-faint); }
 
 .dc-header {
@@ -610,9 +615,14 @@ select option { background: var(--bg-3); }
   white-space: nowrap;
 }
 .dc-verdict.stable     { background: var(--stable-bg); color: var(--stable); }
+.dc-verdict.ripening   { background: rgba(126,200,164,0.12); color: #7ec8a4; }
+.dc-verdict.forming    { background: rgba(148,163,184,0.08); color: var(--text-muted); }
 .dc-verdict.vulnerable { background: var(--vuln-bg);   color: var(--vuln); }
 .dc-verdict.developing { background: var(--dev-bg);    color: var(--dev); }
 .dc-verdict.early      { background: var(--info-bg);   color: var(--info); }
+
+.dc-verdict.ripening { color: #7ec8a4; }
+.dc-verdict.forming  { color: var(--text-muted); }
 .dc-verdict.delayed    { background: rgba(143,207,138,0.1); color: #8fcf8a; }
 .dc-verdict.moderate   { background: rgba(255,255,255,0.06); color: var(--text-dim); }
 
