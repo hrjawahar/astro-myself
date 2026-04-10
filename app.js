@@ -1047,8 +1047,8 @@ function showPlaceConfirmed(name, utcOffset) {
   const utcEl = document.getElementById("detectedUTC");
   if (!utcEl) return;
   const offsetStr = utcOffset != null
-    ? `UTC${utcOffset >= 0 ? "+" : ""}${utcOffset}`
-    : "UTC offset unknown — enter manually if needed";
+    ? `GMT${utcOffset >= 0 ? "+" : ""}${utcOffset}`
+    : "GMT offset unknown — enter manually if needed";
   utcEl.innerHTML = `<span class="utc-ok">✓ ${name}</span> <span class="utc-offset">${offsetStr}</span>`;
 }
 
