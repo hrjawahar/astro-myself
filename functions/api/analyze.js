@@ -579,13 +579,14 @@ function scoreChartDomain(chart, config, combustSet, warLosers) {
 
 // ── Verdict combination ──────────────────────────────────────────────────────
 function combineVerdict(d1, d9) {
-  if (d1==="Strong"     && d9==="Strong")     return "Stable";
-  if (d1==="Weak"       && d9==="Weak")       return "Vulnerable";
-  if (d1==="Strong"     && d9==="Weak")       return "Early promise, later inconsistency";
-  if (d1==="Weak"       && d9==="Strong")     return "Delayed but improving";
-  if (d1==="Developing" && d9==="Developing") return "Developing";
-  if (d1==="Strong"     || d9==="Strong")     return "Moderately supported";
-  return "Developing";
+  if (d1==="Strong"     && d9==="Strong")     return "In Full Flow";
+  if (d1==="Weak"       && d9==="Weak")       return "Needs Tending";
+  if (d1==="Strong"     && d9==="Weak")       return "Peak Comes Early";
+  if (d1==="Weak"       && d9==="Strong")     return "Deferred, Not Denied";
+  if (d1==="Developing" && d9==="Developing") return "Still Forming";
+  if (d1==="Strong")                           return "Foundation Holds";
+  if (d9==="Strong")                           return "Ripening";
+  return "Still Forming";
 }
 
 // ── Build domain result with yoga overrides ───────────────────────────────────
@@ -641,9 +642,9 @@ function buildDomainResult(d1, d9, config, combustD1, warD1, combustD9, warD9, y
 
 // ── TIER 2-B  Weighted summary ───────────────────────────────────────────────
 function buildSummary(domains) {
-  const weightedStable     = domains.filter(d=>d.verdict==="Stable").reduce((s,d)=>s+(DOMAIN_WEIGHT[d.title]||1),0);
-  const weightedVulnerable = domains.filter(d=>d.verdict==="Vulnerable").reduce((s,d)=>s+(DOMAIN_WEIGHT[d.title]||1),0);
-  const improvingCount     = domains.filter(d=>d.verdict==="Delayed but improving"||d.verdict==="Early promise, later inconsistency").length;
+  const weightedStable     = domains.filter(d=>d.verdict==="In Full Flow").reduce((s,d)=>s+(DOMAIN_WEIGHT[d.title]||1),0);
+  const weightedVulnerable = domains.filter(d=>d.verdict==="Needs Tending").reduce((s,d)=>s+(DOMAIN_WEIGHT[d.title]||1),0);
+  const improvingCount     = domains.filter(d=>d.verdict==="Deferred, Not Denied"||d.verdict==="Peak Comes Early").length;
 
   let overallPattern = "Balanced chart with selective strengths and areas requiring attention.";
   if (weightedStable >= 4.0)      overallPattern = "This chart shows broad structural support across the most important life domains.";
