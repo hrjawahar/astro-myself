@@ -88,13 +88,17 @@ function dignityLabel(planet, sign) {
 }
 
 // ── TIER 2-A  Per-domain max scores ──────────────────────────────────────────
+// DOMAIN_MAX recalibrated for weighted aspect scoring (Jupiter trinal = ±2.5,
+// Mars special = ±2.0, Saturn upachaya = ±1.5). Old maxes were set for flat ±1
+// which caused Strong threshold to be breached by a single Jupiter aspect alone.
+// New maxes restore meaningful discrimination between Developing/Strong/Weak.
 const DOMAIN_MAX = {
-  "Identity & Personality":    6,
-  "Wealth & Family":           8,
-  "Marriage & Relationship":  10,
-  "Career & Ambition":        11,
-  "Emotional Fidelity":        8,
-  "Health & Vitality":        11,
+  "Identity & Personality":    9,
+  "Wealth & Family":          12,
+  "Marriage & Relationship":  14,
+  "Career & Ambition":        16,
+  "Emotional Fidelity":       12,
+  "Health & Vitality":        16,
 };
 function getStrength(score, domainTitle) {
   const max = DOMAIN_MAX[domainTitle] || 8;
@@ -341,9 +345,14 @@ function detectYogas(chart) {
   const dusthanaLords = dusthanas.map(h => { const s=houseSign(lagna,h); return s?signLord[s]:null; }).filter(Boolean);
   const viparitaCount = dusthanaLords.filter(dl => { const h=ph(dl); return h && dusthanas.includes(h); }).length;
   if (viparitaCount >= 2) {
-    yogas.push({ name:"Viparita Raja Yoga", type:"REMOVE_FLAG", domains:["Health & Vitality","Emotional Fidelity"],
-      targetFlag:"dusthana-lord-stress",
-      reason:`Viparita Raja Yoga: ${viparitaCount} dusthana lords in dusthanas — net harm to these domains is reduced.` });
+    // FIX 6: Viparita RY now BOOSTS the dusthana domains it activates.
+    // Classical: when dusthana lords occupy other dusthanas, the negative energy
+    // cancels and inverts — producing unexpected gains, resilience and hidden strength
+    // particularly for Health, Emotional, and transformative domains (8th/12th).
+    // Previous REMOVE_FLAG had no scoring impact; BOOST lifts the domain verdict.
+    yogas.push({ name:"Viparita Raja Yoga", type:"BOOST",
+      domains:["Health & Vitality","Emotional Fidelity","Marriage & Relationship"],
+      reason:`Viparita Raja Yoga: ${viparitaCount} dusthana lords placed in dusthanas — adversity inverts to hidden strength in these domains.` });
   }
 
   // Kemadruma (negative)
@@ -368,6 +377,41 @@ function detectYogas(chart) {
       yogas.push({ name:"Neecha Bhanga", type:"REMOVE_FLAG", domains: DOMAIN_CONFIG.map(d=>d.title), planet,
         targetFlag:`neecha-${planet.toLowerCase()}`,
         reason:`Neecha Bhanga: ${planet} is debilitated but its dispositor ${dispositor} is in a kendra — debilitation cancelled.` });
+    }
+  }
+
+  // Parivartana Yoga (Mutual Reception) — FIX 7
+  // Two planets each placed in the other's own sign = strong mutual exchange.
+  // Classical effect: both planets behave as if in own sign → dignity boost.
+  // Score impact: each planet in the exchange gains +1 to domain score (via BOOST)
+  // when either planet is a karaka or lord relevant to a domain.
+  const parivartanaPairs = [];
+  for (let i=0; i<FS_PLANETS.length; i++) {
+    for (let j=i+1; j<FS_PLANETS.length; j++) {
+      const p1 = FS_PLANETS[i], p2 = FS_PLANETS[j];
+      if (!p1 || !p2) continue;
+      const h1 = ph(p1), h2 = ph(p2);
+      if (!h1 || !h2) continue;
+      const s1 = houseSign(lagna, h1), s2 = houseSign(lagna, h2);
+      if (!s1 || !s2) continue;
+      const own1 = OWN_SIGNS[p1] || [], own2 = OWN_SIGNS[p2] || [];
+      // p1 in p2's sign AND p2 in p1's sign
+      if (own2.includes(s1) && own1.includes(s2)) {
+        parivartanaPairs.push({ p1, p2, h1, h2, s1, s2 });
+        // Determine which domains benefit from this exchange
+        const activeDomains = DOMAIN_CONFIG
+          .filter(d => d.houses.includes(h1) || d.houses.includes(h2) ||
+                       d.karakas.includes(p1) || d.karakas.includes(p2))
+          .map(d => d.title);
+        if (activeDomains.length > 0) {
+          yogas.push({
+            name: "Parivartana Yoga",
+            type: "BOOST",
+            domains: activeDomains,
+            reason: `Parivartana Yoga: ${p1} in ${s1} and ${p2} in ${s2} — mutual reception; both planets act as if in own sign, strengthening the domains they rule and occupy.`
+          });
+        }
+      }
     }
   }
 
@@ -422,22 +466,40 @@ function scoreChartDomain(chart, config, combustSet, warLosers) {
       const lordSign = houseSign(lagna, lordHouse);
       const lordDig  = lordSign ? dignityModifier(lord, lordSign) : 0;
       const lordFS   = functionalStatus(lord, lagna);
-      const lordBase = bucket==="supportive"?(lordFS==="Y"?3:2):bucket==="stress"?-2:0;
+      // FIX 4: Graduated dusthana lord scoring.
+      // Old: all lords in H6/8/12 scored flat -2 regardless of functional status.
+      // Classical: a yogakaraka/benefic lord in dusthana is stressed but not destroyed —
+      // it partially retains its positive quality (Viparita Yoga tendency).
+      // A malefic lord in its own dusthana is even more destructive than flat -2.
+      let lordBase;
+      if (bucket === "supportive") {
+        lordBase = lordFS === "Y" ? 3 : lordFS === "B" ? 2 : 0;
+      } else if (bucket === "stress") {
+        if (lordFS === "Y")      lordBase = -1;   // YK in dusthana: stressed but dignity buffers
+        else if (lordFS === "B") lordBase = -1;   // Benefic in dusthana: partially offset
+        else if (lordFS === "M") lordBase = -3;   // Malefic in dusthana: compounded
+        else                     lordBase = -2;   // Neutral in dusthana: standard
+      } else {
+        lordBase = 0;
+      }
       const lordTotal = lordBase + lordDig;
       score += lordTotal;
-      if (bucket==="supportive") {
+      if (bucket === "supportive") {
         reasons.push({ text:`House ${houseNum} lord ${lord} in house ${lordHouse} — structural support${lordDig>0?" (dignified, bonus)":lordDig<0?" (debilitated, reduced)":""}.`, delta:lordTotal, type:"LORD", planet:lord, house:houseNum });
-      } else if (bucket==="stress") {
+      } else if (bucket === "stress") {
+        const stressNote = lordFS === "Y" || lordFS === "B" ? " (functional status partially offsets stress)" : lordFS === "M" ? " (malefic lord in dusthana — compounded pressure)" : "";
         flags.push(`house-${houseNum}-lord-under-stress`);
-        reasons.push({ text:`House ${houseNum} lord ${lord} in house ${lordHouse} (stress placement)${lordDig>0?" — dignity partially offsets":""}.`, delta:lordTotal, type:"LORD", planet:lord, house:houseNum });
+        reasons.push({ text:`House ${houseNum} lord ${lord} in house ${lordHouse} (dusthana placement)${stressNote}.`, delta:lordTotal, type:"LORD", planet:lord, house:houseNum });
       } else {
         reasons.push({ text:`House ${houseNum} lord ${lord} in house ${lordHouse} — neutral placement.`, delta:lordTotal, type:"LORD", planet:lord, house:houseNum });
       }
     }
   });
 
-  // Karakas
-  config.karakas.forEach(planet => {
+  // Karakas — FIX 5: primary karaka (first in array) scores 1.5x secondary karakas.
+  // Classical: Venus is primary karaka for Marriage, Jupiter for Wealth/Children etc.
+  // Treating all karakas equally understates the primary's influence on domain verdict.
+  config.karakas.forEach((planet, karakaIdx) => {
     const planetHouse = getPlanetHouse(houses, planet);
     if (planetHouse === null) return;
     const sign   = houseSign(lagna, planetHouse);
@@ -446,13 +508,17 @@ function scoreChartDomain(chart, config, combustSet, warLosers) {
     const comb   = combustSet.has(planet) ? -1 : 0;
     const war    = warLosers.has(planet)  ? -1 : 0;
     const bucketBase = bucket==="supportive"?1:bucket==="stress"?-1:0;
-    const total  = bucketBase + Math.trunc(dig * 0.5) + comb + war;
+    const baseTotal  = bucketBase + Math.trunc(dig * 0.5) + comb + war;
+    // Primary karaka (index 0) gets 1.5x multiplier; secondary karakas get 1x
+    const karakaWeight = karakaIdx === 0 ? 1.5 : 1.0;
+    const total = Math.round(baseTotal * karakaWeight * 10) / 10;
     score += total;
+    const primaryLabel = karakaIdx === 0 ? "primary karaka" : "secondary karaka";
     if (bucket==="stress") {
       flags.push(`${planet.toLowerCase()}-under-pressure`);
-      reasons.push({ text:`${planet} (karaka) in house ${planetHouse} adds strain${combustSet.has(planet)?" — also combust":""}.`, delta:total, type:"KARAKA", planet, house:planetHouse });
+      reasons.push({ text:`${planet} (${primaryLabel}) in house ${planetHouse} adds strain${combustSet.has(planet)?" — also combust":""}.`, delta:total, type:"KARAKA", planet, house:planetHouse });
     } else if (bucket==="supportive") {
-      reasons.push({ text:`${planet} (karaka) supports this domain from house ${planetHouse}${dig>0?" — dignified":""}.`, delta:total, type:"KARAKA", planet, house:planetHouse });
+      reasons.push({ text:`${planet} (${primaryLabel}) supports this domain from house ${planetHouse}${dig>0?" — dignified":""}.`, delta:total, type:"KARAKA", planet, house:planetHouse });
     }
   });
 
@@ -464,34 +530,41 @@ function scoreChartDomain(chart, config, combustSet, warLosers) {
     const aspectList = getAspects(planet, planetH);
     const fs = functionalStatus(planet, lagna);
 
+    // FIX 1: Dignified-neutral rule — a neutral planet that is exalted or in own
+    // sign acts as functionally benefic for ASPECT purposes (not for lordship).
+    // Classical Parashari: dignity overrides neutrality when casting aspects.
+    const planetSign = houseSign(lagna, planetH); // sign the aspecting planet occupies
+    const planetDig  = planetSign ? dignityModifier(planet, planetSign) : 0;
+    const effectiveFs = (fs === 'N' && planetDig >= 1) ? 'B' : fs;
+
     aspectList.forEach(({ house: aspectedHouse, wb, wm, label }) => {
       // Skip if the planet is already IN that house (conjunction, not aspect)
       if ((houses[aspectedHouse] || []).includes(planet)) return;
       // Skip if the aspected house is not one of this domain's houses
       if (!config.houses.includes(aspectedHouse)) return;
 
-      if (fs === 'Y') {
-        // Yogakaraka: full benefic weight
+      if (effectiveFs === 'Y') {
         score += wb;
         reasons.push({
           text: `${planet} (yogakaraka) casts its ${label} aspect on house ${aspectedHouse} — strong uplift.`,
           delta: wb, type: 'ASPECT', planet, house: aspectedHouse
         });
-      } else if (fs === 'B') {
+      } else if (effectiveFs === 'B') {
+        const dignity_note = (fs === 'N' && planetDig >= 1) ? ' (dignity elevates neutral to benefic)' : '';
         score += wb;
         reasons.push({
-          text: `${planet} (benefic) casts its ${label} aspect on house ${aspectedHouse}.`,
+          text: `${planet} (benefic${dignity_note}) casts its ${label} aspect on house ${aspectedHouse}.`,
           delta: wb, type: 'ASPECT', planet, house: aspectedHouse
         });
-      } else if (fs === 'M') {
-        score += wm; // wm is already negative
+      } else if (effectiveFs === 'M') {
+        score += wm;
         flags.push(`malefic-aspect-house-${aspectedHouse}`);
         reasons.push({
           text: `${planet} (malefic) casts its ${label} aspect on house ${aspectedHouse} — puts pressure on this domain.`,
           delta: wm, type: 'ASPECT', planet, house: aspectedHouse
         });
       }
-      // Neutral planets (fs==='N') cast no scored aspect — standard Parashari practice
+      // Neutral undignified planets cast no scored aspect — standard Parashari practice
     });
   });
 
@@ -607,13 +680,16 @@ export async function onRequestPost(context) {
 
     const d1Degrees   = body?.d1?.degrees   || null;
     const d1Latitudes = body?.d1?.latitudes || null;
-    const d9Degrees   = body?.d9?.degrees   || null;
-    const d9Latitudes = body?.d9?.latitudes || null;
 
+    // FIX 3: D9 combustion/war uses D1 sidereal degrees.
+    // Combustion is a physical sky phenomenon (angular distance from Sun).
+    // A planet combust in D1 is equally combust when assessing its D9 house —
+    // the navamsha chart does not change the planet's actual solar proximity.
+    // Passing empty degrees here was producing artificially clean D9 scores.
     const combustD1 = buildCombustFlags(d1Degrees);
     const warD1     = buildWarLosers(d1Degrees, d1Latitudes);
-    const combustD9 = buildCombustFlags(d9Degrees);
-    const warD9     = buildWarLosers(d9Degrees, d9Latitudes);
+    const combustD9 = buildCombustFlags(d1Degrees);   // same physical degrees
+    const warD9     = buildWarLosers(d1Degrees, d1Latitudes); // same physical latitudes
 
     const yogasD1 = detectYogas(d1);
     const yogasD9 = detectYogas(d9);
