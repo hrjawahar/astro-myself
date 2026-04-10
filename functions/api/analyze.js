@@ -228,15 +228,59 @@ function buildWarLosers(planetDegrees, planetLatitudes) {
   return losers;
 }
 
-// ── TIER 3-C  Aspects ─────────────────────────────────────────────────────────
-function getAspectedHouses(planet, planetHouseNum) {
-  const h = planetHouseNum;
+// ── TIER 3-C  Aspects — Weighted Parashari Graha Drishti ─────────────────────
+//
+// Classical weights (Parashari tradition):
+//
+//  Jupiter 5th / 9th (trinal aspects) — STRONGEST: grace flows through dharmic houses.
+//    Benefic/Yogakaraka Jupiter: +2.5  |  Malefic Jupiter: −1.5
+//    Even a neutral Jupiter on 5th/9th brings some uplift to the domain.
+//
+//  Jupiter 7th (full drishti) — STRONG:
+//    Benefic/Yogakaraka: +1.5  |  Malefic: −1.0
+//
+//  Mars 4th / 8th (special aspects) — FORCEFUL:
+//    4th (kendra): active energy, can build or disrupt.
+//    8th (dusthana): most destructive special aspect when malefic.
+//    Benefic/Yogakaraka Mars: +1.5  |  Malefic Mars: −2.0
+//
+//  Saturn 3rd / 10th (upachaya aspects) — CHRONIC:
+//    Grows slowly; results compound over time.
+//    Benefic/Yogakaraka Saturn: +1.0  |  Malefic Saturn: −1.5
+//
+//  All planets 7th — STANDARD full drishti:
+//    Benefic/Yogakaraka: +1.0  |  Malefic: −1.0
+//
+// The offsets below are from the PLANET'S house number, matching the
+// South Indian Parashari reckoning (wrap-around within 1–12):
+//   +6 = 7th from planet  (all planets)
+//   +3 = 4th from planet, +7 = 8th from planet  (Mars only)
+//   +4 = 5th from planet, +8 = 9th from planet  (Jupiter only)
+//   +2 = 3rd from planet, +9 = 10th from planet (Saturn only)
+
+function getAspects(planet, planetHouseNum) {
+  const h    = planetHouseNum;
   const wrap = n => ((n - 1 + 12) % 12) + 1;
-  const aspects = [wrap(h + 6)];
-  if (planet === "Mars")    aspects.push(wrap(h + 3), wrap(h + 7));
-  if (planet === "Jupiter") aspects.push(wrap(h + 4), wrap(h + 8));
-  if (planet === "Saturn")  aspects.push(wrap(h + 2), wrap(h + 9));
+  // Returns array of { house, weight_benefic, weight_malefic, label }
+  const aspects = [{ house: wrap(h + 6), wb: 1.0, wm: -1.0, label: '7th (full)' }];
+  if (planet === 'Mars') {
+    aspects.push({ house: wrap(h + 3), wb: 1.5, wm: -2.0, label: '4th (special)' });
+    aspects.push({ house: wrap(h + 7), wb: 1.5, wm: -2.0, label: '8th (special)' });
+  }
+  if (planet === 'Jupiter') {
+    aspects.push({ house: wrap(h + 4), wb: 2.5, wm: -1.5, label: '5th trinal (strongest)' });
+    aspects.push({ house: wrap(h + 8), wb: 2.5, wm: -1.5, label: '9th trinal (strongest)' });
+  }
+  if (planet === 'Saturn') {
+    aspects.push({ house: wrap(h + 2), wb: 1.0, wm: -1.5, label: '3rd upachaya' });
+    aspects.push({ house: wrap(h + 9), wb: 1.0, wm: -1.5, label: '10th upachaya' });
+  }
   return aspects;
+}
+
+// Keep backward-compatible helper (used only for retro-detection, not scoring)
+function getAspectedHouses(planet, planetHouseNum) {
+  return getAspects(planet, planetHouseNum).map(a => a.house);
 }
 
 // ── TIER 4-A  Yoga detection ─────────────────────────────────────────────────
@@ -412,24 +456,42 @@ function scoreChartDomain(chart, config, combustSet, warLosers) {
     }
   });
 
-  // Aspects (Tier 3-C)
+  // Aspects (Tier 3-C) — weighted Parashari graha drishti
   const allPlanets = [...FS_PLANETS];
   allPlanets.forEach(planet => {
     const planetH = getPlanetHouse(houses, planet);
     if (!planetH) return;
-    const aspectedHouses = getAspectedHouses(planet, planetH);
+    const aspectList = getAspects(planet, planetH);
     const fs = functionalStatus(planet, lagna);
-    config.houses.forEach(domainHouse => {
-      if (aspectedHouses.includes(domainHouse) && !(houses[domainHouse] || []).includes(planet)) {
-        if (fs==="B"||fs==="Y") {
-          score += 1;
-          reasons.push({ text:`${planet} casts a beneficial aspect on house ${domainHouse}.`, delta:1, type:"ASPECT", planet, house:domainHouse });
-        } else if (fs==="M") {
-          score -= 1;
-          flags.push(`malefic-aspect-house-${domainHouse}`);
-          reasons.push({ text:`${planet} casts a malefic aspect on house ${domainHouse}.`, delta:-1, type:"ASPECT", planet, house:domainHouse });
-        }
+
+    aspectList.forEach(({ house: aspectedHouse, wb, wm, label }) => {
+      // Skip if the planet is already IN that house (conjunction, not aspect)
+      if ((houses[aspectedHouse] || []).includes(planet)) return;
+      // Skip if the aspected house is not one of this domain's houses
+      if (!config.houses.includes(aspectedHouse)) return;
+
+      if (fs === 'Y') {
+        // Yogakaraka: full benefic weight
+        score += wb;
+        reasons.push({
+          text: `${planet} (yogakaraka) casts its ${label} aspect on house ${aspectedHouse} — strong uplift.`,
+          delta: wb, type: 'ASPECT', planet, house: aspectedHouse
+        });
+      } else if (fs === 'B') {
+        score += wb;
+        reasons.push({
+          text: `${planet} (benefic) casts its ${label} aspect on house ${aspectedHouse}.`,
+          delta: wb, type: 'ASPECT', planet, house: aspectedHouse
+        });
+      } else if (fs === 'M') {
+        score += wm; // wm is already negative
+        flags.push(`malefic-aspect-house-${aspectedHouse}`);
+        reasons.push({
+          text: `${planet} (malefic) casts its ${label} aspect on house ${aspectedHouse} — puts pressure on this domain.`,
+          delta: wm, type: 'ASPECT', planet, house: aspectedHouse
+        });
       }
+      // Neutral planets (fs==='N') cast no scored aspect — standard Parashari practice
     });
   });
 
