@@ -469,20 +469,29 @@ function buildDomainResult(d1, d9, config, combustD1, warD1, combustD9, warD9, y
   const relevantYogas = [...yogasD1, ...yogasD9].filter(y => y.domains.includes(config.title));
   for (const yoga of relevantYogas) {
     if (yoga.type==="BOOST") {
-      if (["Developing","Moderately supported"].includes(verdict)) verdict = "Stable";
+      // Boost the strength to Strong, then re-derive verdict so display is always consistent
       if (d1Strength!=="Strong") d1Strength = "Strong";
+      verdict = combineVerdict(d1Strength, d9Strength);
       allReasons.unshift(`[YOGA] ${yoga.reason}`);
       allFlags.push(`yoga-${yoga.name.toLowerCase().replace(/\s+/g,"-")}`);
     }
-    if (yoga.type==="SUPPRESS" && verdict!=="Vulnerable") {
+    if (yoga.type==="SUPPRESS") {
       if (d1Result.score<0 || d9Result.score<0) {
-        verdict = "Vulnerable";
+        // Reflect underlying weakness in the displayed strengths so Strong/Strong/Vulnerable
+        // contradiction cannot appear — the suppressed strength drops to Weak
+        if (d1Result.score<0) d1Strength = "Weak";
+        if (d9Result.score<0) d9Strength = "Weak";
+        verdict = combineVerdict(d1Strength, d9Strength);
         allReasons.unshift(`[YOGA] ${yoga.reason}`);
         allFlags.push(`yoga-negative-${yoga.name.toLowerCase().replace(/\s+/g,"-")}`);
       }
     }
     if (yoga.type==="REMOVE_FLAG") allReasons.push(`[YOGA] ${yoga.reason}`);
   }
+
+  // Final guard: verdict must always be consistent with the displayed d1/d9 strengths.
+  // Re-derive once more so no yoga sequencing edge-case can leave an impossible combination.
+  verdict = combineVerdict(d1Strength, d9Strength);
 
   return {
     title: config.title,
