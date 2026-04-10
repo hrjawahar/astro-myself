@@ -537,14 +537,22 @@ function renderDashaScreen(data) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function verdictClass(v) {
-  if (!v) return "developing";
+  if (!v) return "forming";
   const k = v.toLowerCase();
-  if (k.includes("stable"))      return "stable";
-  if (k.includes("vulnerable"))  return "vulnerable";
-  if (k.includes("early"))       return "early";
+  if (k.includes("full flow"))          return "stable";    // In Full Flow
+  if (k.includes("needs tending"))      return "vulnerable"; // Needs Tending
+  if (k.includes("peak comes"))         return "early";     // Peak Comes Early
+  if (k.includes("deferred"))           return "delayed";   // Deferred, Not Denied
+  if (k.includes("foundation holds"))   return "moderate";  // Foundation Holds
+  if (k.includes("ripening"))           return "ripening";  // Ripening
+  if (k.includes("still forming"))      return "forming";   // Still Forming
+  // Legacy fallbacks
+  if (k.includes("stable"))             return "stable";
+  if (k.includes("vulnerable"))         return "vulnerable";
+  if (k.includes("early"))              return "early";
   if (k.includes("delayed")||k.includes("improving")) return "delayed";
-  if (k.includes("moderate"))    return "moderate";
-  return "developing";
+  if (k.includes("moderate"))           return "moderate";
+  return "forming";
 }
 
 function deriveTrend(d) {
