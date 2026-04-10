@@ -142,21 +142,23 @@ function outerPlanetPosition(T, L0c, L1c, a, e0, ec, i0, ic, w0, wc, N0, Nc) {
   const nu = 2 * Math.atan2(Math.sqrt(1+e)*Math.sin(E/2), Math.sqrt(1-e)*Math.cos(E/2));
   const r = a * (1 - e * Math.cos(E));
 
-  // Heliocentric ecliptic coords
-  const lon_helio = norm360((nu * RAD + w) % 360);
-
-  // Convert to geocentric (approximate — ignores latitude for house placement)
-  // Add Earth-Sun distance effect (simplified)
-  const sunPos = sunPosition(T);
-  // For house placement purposes we use heliocentric + offset from Sun
-  const geocentric = norm360(lon_helio + (lon_helio > sunPos.longitude ? 0 : 0));
-
-  // Better geocentric approximation using Meeus simplified method
+  // True heliocentric ecliptic longitude (in degrees)
+  const lon_helio = norm360(nu * RAD + w);
   const lh = lon_helio * DEG;
-  const ls = sunPos.longitude * DEG;
-  const geo_lon = Math.atan2(r * Math.sin(lh) - Math.cos(ls), r * Math.cos(lh) - Math.cos(ls)) * RAD;
 
-  return { longitude: norm360(geo_lon), latitude: 0 };
+  // Earth's heliocentric ecliptic longitude = geocentric Sun longitude + 180°
+  // Earth-Sun distance (approximate from mean anomaly)
+  const M_earth = norm360(357.52911 + 35999.05029 * T) * DEG;
+  const e_earth = 0.016708634;
+  const r_e = 1.000001018 * (1 - e_earth * Math.cos(M_earth)); // approximate
+
+  const le = norm360(sunPosition(T).longitude + 180) * DEG; // Earth helio lon
+
+  // Geocentric vector: planet_helio - Earth_helio
+  const dx = r * Math.cos(lh) - r_e * Math.cos(le);
+  const dy = r * Math.sin(lh) - r_e * Math.sin(le);
+
+  return { longitude: norm360(Math.atan2(dy, dx) * RAD), latitude: 0 };
 }
 
 // Mercury and Venus (inner planets) — simplified elongation approach
