@@ -445,6 +445,24 @@ function assignPlanetsToHouses(planets, lagnaSign) {
   return houses;
 }
 
+// D9-specific house assignment — uses navamshaSign not the D1 longitude
+function assignD9PlanetsToHouses(d9Planets, d9LagnaSign) {
+  const houses = {};
+  for (let h = 1; h <= 12; h++) houses[h] = [];
+  const houseToSign = buildWholeSignHouses(d9LagnaSign);
+
+  for (const [planet, data] of Object.entries(d9Planets)) {
+    const sign = data.navamshaSign; // use the computed navamsha sign, not D1 longitude
+    for (const [h, s] of Object.entries(houseToSign)) {
+      if (s === sign) {
+        houses[parseInt(h)].push(planet);
+        break;
+      }
+    }
+  }
+  return houses;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  SECTION 6: D9 NAVAMSHA CALCULATION
 //  Each sign (30°) is divided into 9 equal navamshas of 3°20' (3.333°)
@@ -756,7 +774,7 @@ export async function onRequestPost(context) {
 
     // D9
     const d9Data   = buildD9(sidPositions, siderealASC);
-    const d9Houses = assignPlanetsToHouses(d9Data.planets, d9Data.lagnaSign);
+    const d9Houses = assignD9PlanetsToHouses(d9Data.planets, d9Data.lagnaSign);
 
     // Dasha
     const dasha = computeVimshottari(sidPositions.Moon.longitude, JD);
